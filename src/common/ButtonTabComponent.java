@@ -1,9 +1,9 @@
 package common;
 
-import javax.swing.*;
-import javax.swing.plaf.basic.BasicButtonUI;
 import java.awt.*;
 import java.awt.event.*;
+import javax.swing.*;
+import javax.swing.plaf.basic.BasicButtonUI;
 
 public class ButtonTabComponent extends JPanel {
     private final JTabbedPane pane;

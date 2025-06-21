@@ -40,138 +40,143 @@ public class WebSocketEditorServer extends WebSocketServer {
 
     @Override
     public void onMessage(WebSocket conn, String message) {
+        System.out.println("🔴 SERVER <- CLIENT: " + message);
         Protocol msg = Protocol.deserialize(message);
         
-        if (msg.type.equals("MSG_HELLO")) {
-            handleHello(conn, msg);
-            return;
-        }
-
-        switch (msg.type) {
-            case "MSG_CREATE":
-                handleCreate(conn, msg);
+        switch (msg.getCommand()) {
+            case "LOGIN":
+                handleLogin(conn, msg.getArgs()[0]);
                 break;
-            case "MSG_EDIT":
-                handleEdit(conn, msg);
+            case "EDIT":
+                handleEdit(conn, msg.getArgs()[0], msg.getArgs()[1], msg.getContent());
                 break;
-            case "MSG_JOIN":
-                handleJoin(conn, msg);
+            case "LIST_FILES_REQUEST":
+                handleListFilesRequest(conn, msg.getArgs()[0]);
                 break;
-            case "MSG_LIST":
-                handleList(conn);
+            case "CREATE_FILE":
+                handleCreateFile(conn, msg.getArgs()[0], msg.getArgs()[1]);
                 break;
-            case "MSG_SET_EDITORS":
-                handleSetEditors(conn, msg);
+            case "CHECK_PERMISSION":
+                handleCheckPermission(conn, msg.getArgs()[0], msg.getArgs()[1]);
                 break;
-            case "MSG_GET_EDITORS":
-                handleGetEditors(conn, msg);
+            case "GET_EDITORS":
+                handleGetEditors(conn, msg.getArgs()[0]);
                 break;
-            case "MSG_LEAVE":
-                handleLeave(conn, msg);
+            case "LEAVE_FILE":
+                handleLeaveFile(conn, msg.getArgs()[0], msg.getArgs()[1]);
+                break;
+            case "SET_EDITORS":
+                handleSetEditors(conn, msg.getArgs()[0], msg.getArgs()[1], msg.getContent());
                 break;
         }
     }
 
-    private void handleHello(WebSocket conn, Protocol msg) {
-        clients.put(conn, msg.username);
-        activeUsers.add(msg.username);
+    private void handleLogin(WebSocket conn, String username) {
+        clients.put(conn, username);
+        activeUsers.add(username);
         broadcastActiveUsers();
+        
+        // Login başarılı mesajı gönder
+        Protocol response = Protocol.success("Başarıyla giriş yapıldı: " + username);
+        String responseMessage = response.serialize();
+        System.out.println("SERVER -> CLIENT: " + responseMessage);
+        conn.send(responseMessage);
     }
 
-    private void handleCreate(WebSocket conn, Protocol msg) {
-        if (!fileNames.contains(msg.fileName)) {
-            fileNames.add(msg.fileName);
-            fileContents.put(msg.fileName, "");
-            fileOwners.put(msg.fileName, msg.username);
-            fileEditors.put(msg.fileName, new HashSet<>());
+    private void handleCreateFile(WebSocket conn, String username, String fileName) {
+        if (!fileNames.contains(fileName)) {
+            fileNames.add(fileName);
+            fileContents.put(fileName, "");
+            fileOwners.put(fileName, username);
+            
+            // Dosya sahibini editörlere EKLEME - sadece sahip olarak tut
+            Set<String> editors = new HashSet<>();
+            // editors.add(username); // Bu satırı kaldırıyoruz
+            fileEditors.put(fileName, editors);
 
-            Protocol response = new Protocol("MSG_INFO", "SERVER", msg.fileName, "Dosya oluşturuldu.");
-            response.statusCode = "201 Created";
-            conn.send(response.serialize());
+            Protocol response = Protocol.success("Dosya oluşturuldu: " + fileName);
+            String responseMessage = response.serialize();
+            System.out.println("SERVER -> CLIENT: " + responseMessage);
+            conn.send(responseMessage);
+            
+            // Dosya sahibine editör listesini gönder
+            String combinedMsg = username + " (dosya sahibi);";
+            Protocol editorsResponse = Protocol.editorsList(fileName, combinedMsg);
+            String editorsMessage = editorsResponse.serialize();
+            System.out.println("SERVER -> CLIENT: " + editorsMessage);
+            conn.send(editorsMessage);
         } else {
-            Protocol response = new Protocol("MSG_DENY", "SERVER", msg.fileName, "Bu isimde bir dosya zaten var.");
-            response.statusCode = "409 Conflict";
-            conn.send(response.serialize());
+            Protocol response = Protocol.error("FILE_EXISTS", "Bu isimde bir dosya zaten var: " + fileName);
+            String responseMessage = response.serialize();
+            System.out.println("SERVER -> CLIENT: " + responseMessage);
+            conn.send(responseMessage);
         }
     }
 
-    private void handleEdit(WebSocket conn, Protocol msg) {
-        String editor = msg.username;
-        String owner = fileOwners.get(msg.fileName);
-        Set<String> editorsSet = fileEditors.get(msg.fileName);
+    private void handleEdit(WebSocket conn, String username, String fileName, String content) {
+        String owner = fileOwners.get(fileName);
+        Set<String> editorsSet = fileEditors.get(fileName);
 
-        boolean isOwner = editor.equals(owner);
-        boolean isEditor = editorsSet != null && editorsSet.contains(editor);
+        boolean isOwner = username.equals(owner);
+        boolean isEditor = editorsSet != null && editorsSet.contains(username);
 
         if (isOwner || isEditor) {
             // Önce dosya içeriğini güncelle
-            fileContents.put(msg.fileName, msg.content);
+            fileContents.put(fileName, content);
             
             // Dosyayı kaydet
-            saveToFile(msg.fileName, msg.content);
+            saveToFile(fileName, content);
 
             // Düzenleyicilere yeni içeriği gönder
-            Protocol editMsg = new Protocol("MSG_EDIT", editor, msg.fileName, msg.content);
-            editMsg.statusCode = "200 OK";
+            Protocol editMsg = Protocol.edit(username, fileName, content);
+            String editMessage = editMsg.serialize();
+            System.out.println("SERVER -> CLIENTS: " + editMessage);
             
             // Düzenleyicilere ve dosya sahibine gönder
             for (Map.Entry<WebSocket, String> entry : clients.entrySet()) {
                 WebSocket client = entry.getKey();
-                String username = entry.getValue();
+                String clientUsername = entry.getValue();
                 
                 // Kendisine gönderme
-                if (username.equals(editor)) continue;
+                if (clientUsername.equals(username)) continue;
                 
                 // Dosya sahibi veya düzenleyiciyse gönder
-                if (username.equals(owner) || (editorsSet != null && editorsSet.contains(username))) {
-                    client.send(editMsg.serialize());
+                if (clientUsername.equals(owner) || (editorsSet != null && editorsSet.contains(clientUsername))) {
+                    client.send(editMessage);
                 }
             }
         } else {
-            Protocol response = new Protocol("MSG_DENY", "SERVER", msg.fileName, "Dosyayı düzenleme yetkiniz yok!");
-            response.statusCode = "403 Forbidden";
-            conn.send(response.serialize());
+            Protocol response = Protocol.error("PERMISSION_DENIED", "Dosyayı düzenleme yetkiniz yok: " + fileName);
+            String responseMessage = response.serialize();
+            System.out.println("SERVER -> CLIENT: " + responseMessage);
+            conn.send(responseMessage);
         }
     }
 
-    private void handleJoin(WebSocket conn, Protocol msg) {
-        if (fileContents.containsKey(msg.fileName)) {
-            Protocol contentMsg = new Protocol("MSG_EDIT", "SERVER", msg.fileName, fileContents.get(msg.fileName));
-            contentMsg.statusCode = "200 OK";
-            conn.send(contentMsg.serialize());
-        }
-
-        Set<String> editors = fileEditors.getOrDefault(msg.fileName, Collections.emptySet());
-        String owner = fileOwners.getOrDefault(msg.fileName, "");
-        String combinedMsg = owner + " (dosya sahibi)" + ";editors:" + String.join(",", editors);
-
-        Protocol editorsMsg = new Protocol("MSG_EDITORS", "SERVER", msg.fileName, combinedMsg);
-        editorsMsg.statusCode = "200 OK";
-        conn.send(editorsMsg.serialize());
-    }
-
-    private void handleList(WebSocket conn) {
+    private void handleListFilesRequest(WebSocket conn, String username) {
         String fileList = String.join(",", fileNames);
-        Protocol response = new Protocol("MSG_LIST", "SERVER", "", fileList);
-        response.statusCode = "200 OK";
-        conn.send(response.serialize());
+        Protocol response = Protocol.listFilesResponse(fileList);
+        String responseMessage = response.serialize();
+        System.out.println("SERVER -> CLIENT: " + responseMessage);
+        conn.send(responseMessage);
     }
 
-    private void handleSetEditors(WebSocket conn, Protocol msg) {
-        String owner = fileOwners.get(msg.fileName);
-        if (!msg.username.equals(owner)) {
-            Protocol response = new Protocol("MSG_DENY", "SERVER", msg.fileName, "Sadece dosya sahibi düzenleyicileri değiştirebilir.");
-            response.statusCode = "403 Forbidden";
-            conn.send(response.serialize());
+    private void handleSetEditors(WebSocket conn, String username, String fileName, String editorsStr) {
+        String owner = fileOwners.get(fileName);
+        if (!username.equals(owner)) {
+            Protocol response = Protocol.error("PERMISSION_DENIED", "Sadece dosya sahibi düzenleyicileri değiştirebilir: " + fileName);
+            String responseMessage = response.serialize();
+            System.out.println("SERVER -> CLIENT: " + responseMessage);
+            conn.send(responseMessage);
             return;
         }
 
         // Mevcut editörleri al veya yeni set oluştur
-        Set<String> editors = fileEditors.getOrDefault(msg.fileName, new HashSet<>());
+        Set<String> editors = fileEditors.getOrDefault(fileName, new HashSet<>());
         
         // Yeni editörleri ekle
-        if (!msg.content.isEmpty()) {
-            String[] newEditors = msg.content.split(",");
+        if (editorsStr != null && !editorsStr.isEmpty()) {
+            String[] newEditors = editorsStr.split(",");
             for (String editor : newEditors) {
                 String trimmedEditor = editor.trim();
                 if (!trimmedEditor.isEmpty() && !trimmedEditor.equals(owner)) {
@@ -181,52 +186,73 @@ public class WebSocketEditorServer extends WebSocketServer {
         }
 
         // Güncellenmiş listeyi kaydet
-        fileEditors.put(msg.fileName, editors);
+        fileEditors.put(fileName, editors);
 
-        String combinedMsg = owner + " (dosya sahibi)" + ";editors:" + String.join(",", editors);
-        Protocol response = new Protocol("MSG_EDITORS", "SERVER", msg.fileName, combinedMsg);
-        response.statusCode = "200 OK";
-        broadcast(response.serialize());
+        String combinedMsg = owner + " (dosya sahibi);" + String.join(",", editors);
+        Protocol response = Protocol.editorsList(fileName, combinedMsg);
+        String responseMessage = response.serialize();
+        System.out.println("SERVER -> CLIENTS: " + responseMessage);
+        broadcast(responseMessage);
     }
 
-    private void handleGetEditors(WebSocket conn, Protocol msg) {
-        Set<String> editors = fileEditors.getOrDefault(msg.fileName, Collections.emptySet());
-        String owner = fileOwners.getOrDefault(msg.fileName, "");
-        String combinedMsg = owner + " (dosya sahibi)" + ";editors:" + String.join(",", editors);
+    private void handleGetEditors(WebSocket conn, String fileName) {
+        Set<String> editors = fileEditors.getOrDefault(fileName, Collections.emptySet());
+        String owner = fileOwners.getOrDefault(fileName, "");
+        String combinedMsg = owner + " (dosya sahibi);" + String.join(",", editors);
 
-        Protocol response = new Protocol("MSG_EDITORS", "SERVER", msg.fileName, combinedMsg);
-        response.statusCode = "200 OK";
-        conn.send(response.serialize());
+        Protocol response = Protocol.editorsList(fileName, combinedMsg);
+        String responseMessage = response.serialize();
+        System.out.println("SERVER -> CLIENT: " + responseMessage);
+        conn.send(responseMessage);
     }
 
-    private void handleLeave(WebSocket conn, Protocol msg) {
-        Set<String> editors = fileEditors.get(msg.fileName);
+    private void handleLeaveFile(WebSocket conn, String username, String fileName) {
+        Set<String> editors = fileEditors.get(fileName);
         if (editors != null) {
-            editors.remove(msg.username);
+            editors.remove(username);
         }
 
-        Protocol response = new Protocol("MSG_INFO", "SERVER", msg.fileName, "Dosyadan çıkış yapıldı.");
-        response.statusCode = "200 OK";
-        conn.send(response.serialize());
+        Protocol response = Protocol.success("Dosyadan çıkış yapıldı: " + fileName);
+        String responseMessage = response.serialize();
+        System.out.println("SERVER -> CLIENT: " + responseMessage);
+        conn.send(responseMessage);
+    }
+
+    private void handleCheckPermission(WebSocket conn, String username, String fileName) {
+        String owner = fileOwners.get(fileName);
+        Set<String> editorsSet = fileEditors.get(fileName);
+
+        boolean isOwner = username.equals(owner);
+        boolean isEditor = editorsSet != null && editorsSet.contains(username);
+
+        if (isOwner || isEditor) {
+            // Dosya içeriğini de gönder
+            String content = fileContents.getOrDefault(fileName, "");
+            Protocol response = Protocol.permissionGranted(username, fileName, content);
+            String responseMessage = response.serialize();
+            System.out.println("SERVER -> CLIENT: " + responseMessage);
+            conn.send(responseMessage);
+            
+            // Editör listesini de gönder
+            String combinedMsg = owner + " (dosya sahibi);" + String.join(",", editorsSet != null ? editorsSet : Collections.emptySet());
+            Protocol editorsResponse = Protocol.editorsList(fileName, combinedMsg);
+            String editorsMessage = editorsResponse.serialize();
+            System.out.println("SERVER -> CLIENT: " + editorsMessage);
+            conn.send(editorsMessage);
+        } else {
+            Protocol response = Protocol.permissionDeniedResponse(username, fileName);
+            String responseMessage = response.serialize();
+            System.out.println("SERVER -> CLIENT: " + responseMessage);
+            conn.send(responseMessage);
+        }
     }
 
     private void broadcastActiveUsers() {
         String users = String.join(",", activeUsers);
-        Protocol msg = new Protocol("MSG_ACTIVE_USERS", "SERVER", "", users);
-        msg.statusCode = "200 OK";
-        broadcast(msg.serialize());
-    }
-
-    private void broadcastToFileEditors(String fileName, String message, String excludeUser) {
-        for (Map.Entry<WebSocket, String> entry : clients.entrySet()) {
-            if (!entry.getValue().equals(excludeUser)) {
-                Set<String> editors = fileEditors.get(fileName);
-                String owner = fileOwners.get(fileName);
-                if (entry.getValue().equals(owner) || (editors != null && editors.contains(entry.getValue()))) {
-                    entry.getKey().send(message);
-                }
-            }
-        }
+        Protocol msg = Protocol.activeUsers(users);
+        String message = msg.serialize();
+        System.out.println("SERVER -> CLIENTS: " + message);
+        broadcast(message);
     }
 
     private void loadFiles() {

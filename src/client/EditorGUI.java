@@ -59,7 +59,10 @@ public class EditorGUI {
                 Thread.sleep(100);
             }
 
-            client.send(new Protocol("MSG_HELLO", username, "", "").serialize());
+            // Yeni protokol yapısı ile login mesajı gönder
+            String loginMessage = Protocol.login(username).serialize();
+            System.out.println("CLIENT -> SERVER: " + loginMessage);
+            client.send(loginMessage);
             SwingUtilities.invokeLater(this::initializeUI);
 
         } catch (Exception e) {
@@ -69,26 +72,32 @@ public class EditorGUI {
     }
 
     private void handleServerMessage(String message) {
+        System.out.println("🔴 CLIENT <- SERVER: " + message);
         Protocol msg = Protocol.deserialize(message);
+        System.out.println("DEBUG: Received command: " + msg.getCommand() + ", Args: " + java.util.Arrays.toString(msg.getArgs()));
         SwingUtilities.invokeLater(() -> {
-            switch (msg.type) {
-                case "MSG_EDIT":
+            switch (msg.getCommand()) {
+                case "EDIT":
                     handleEditMessage(msg);
                     break;
-                case "MSG_LIST":
-                    updateFileList(msg.content);
+                case "LIST_FILES_RESPONSE":
+                    updateFileList(msg.getContent());
                     break;
-                case "MSG_DENY":
-                    handleDenyMessage(msg);
+                case "SUCCESS":
+                    showInfo(msg.getContent());
                     break;
-                case "MSG_INFO":
-                    showInfo(msg.content);
+                case "EDITORS_LIST":
+                    updateEditorsList(msg.getFileName(), msg.getContent());
                     break;
-                case "MSG_EDITORS":
-                    updateEditorsList(msg.fileName, msg.content);
+                case "ACTIVE_USERS":
+                    updateActiveUsers(msg.getContent());
                     break;
-                case "MSG_ACTIVE_USERS":
-                    updateActiveUsers(msg.content);
+                case "PERMISSION_GRANTED":
+                    handlePermissionGranted(msg);
+                    break;
+                case "PERMISSION_DENIED":
+                    System.out.println("DEBUG: Handling PERMISSION_DENIED command for file: " + msg.getFileName());
+                    handlePermissionDenied(msg);
                     break;
             }
         });
@@ -173,7 +182,12 @@ public class EditorGUI {
         fileComboBox.addActionListener(e -> {
             if (e.getSource() == fileComboBox && fileComboBox.getSelectedItem() != null) {
                 String selectedFile = (String) fileComboBox.getSelectedItem();
-                if (!selectedFile.isEmpty()) openFileInTab(selectedFile, "");
+                if (!selectedFile.isEmpty()) {
+                    // Önce yetki kontrolü yap
+                    String permissionMessage = Protocol.checkPermission(username, selectedFile).serialize();
+                    System.out.println("CLIENT -> SERVER: " + permissionMessage);
+                    client.send(permissionMessage);
+                }
             }
         });
 
@@ -183,14 +197,23 @@ public class EditorGUI {
             if (newFileName != null && !newFileName.trim().isEmpty()) {
                 if (!newFileName.toLowerCase().endsWith(".txt")) newFileName += ".txt";
                 sendAllEdits();
-                client.send(new Protocol("MSG_CREATE", username, newFileName, "").serialize());
-                client.send(new Protocol("MSG_LIST", username, "", "").serialize());
+                String createMessage = Protocol.createFile(username, newFileName).serialize();
+                System.out.println("CLIENT -> SERVER: " + createMessage);
+                client.send(createMessage);
+                
+                String listMessage = Protocol.listFilesRequest(username).serialize();
+                System.out.println("CLIENT -> SERVER: " + listMessage);
+                client.send(listMessage);
                 openFileInTab(newFileName, "");
             }
         });
 
         JButton listFilesButton = new JButton("Dosya Listesi");
-        listFilesButton.addActionListener(e -> client.send(new Protocol("MSG_LIST", username, "", "").serialize()));
+        listFilesButton.addActionListener(e -> {
+            String listMessage = Protocol.listFilesRequest(username).serialize();
+            System.out.println("CLIENT -> SERVER: " + listMessage);
+            client.send(listMessage);
+        });
 
         topPanel.add(editComboBox);
         topPanel.add(new JLabel("Dosya:"));
@@ -248,7 +271,7 @@ public class EditorGUI {
         editorTab.textArea.setText(content);
         editorTab.textArea.setEnabled(true);
         editorTab.contentChanged = false;
-        editorTab.textArea.setEditable(false);
+        editorTab.textArea.setEditable(true); // Düzenlenebilir yap
 
         editorTab.textArea.getDocument().addDocumentListener(new DocumentListener() {
             private void scheduleSave() {
@@ -291,14 +314,21 @@ public class EditorGUI {
         tabbedPane.setTabComponentAt(tabbedPane.indexOfComponent(mainPanel),
                 new ButtonTabComponent(tabbedPane, fileNameToRemove -> {
                     openFiles.remove(fileNameToRemove);
-                    client.send(new Protocol("MSG_LEAVE", username, fileNameToRemove, "").serialize());
+                    String leaveMessage = Protocol.leaveFile(username, fileNameToRemove).serialize();
+                    System.out.println("CLIENT -> SERVER: " + leaveMessage);
+                    client.send(leaveMessage);
                 })
         );
         openFiles.put(fileName, editorTab);
 
         // Sunucuya katılma ve editörleri çekme mesajları
-        client.send(new Protocol("MSG_JOIN", username, fileName, "").serialize());
-        client.send(new Protocol("MSG_GET_EDITORS", username, fileName, "").serialize());
+        String joinMessage = Protocol.edit(username, fileName, "").serialize();
+        System.out.println("CLIENT -> SERVER: " + joinMessage);
+        client.send(joinMessage);
+        
+        String getEditorsMessage = Protocol.getEditors(fileName).serialize();
+        System.out.println("CLIENT -> SERVER: " + getEditorsMessage);
+        client.send(getEditorsMessage);
     }
 
     private void sendEdit() {
@@ -306,13 +336,17 @@ public class EditorGUI {
         if (editorTab == null || !editorTab.contentChanged) return;
 
         String fileName = tabbedPane.getTitleAt(tabbedPane.getSelectedIndex());
-        client.send(new Protocol("MSG_EDIT", username, fileName, editorTab.textArea.getText()).serialize());
+        String editMessage = Protocol.edit(username, fileName, editorTab.textArea.getText()).serialize();
+        System.out.println("CLIENT -> SERVER: " + editMessage);
+        client.send(editMessage);
     }
 
     private void sendAllEdits() {
         openFiles.forEach((fileName, editorTab) -> {
             if (editorTab.contentChanged) {
-                client.send(new Protocol("MSG_EDIT", username, fileName, editorTab.textArea.getText()).serialize());
+                String editMessage = Protocol.edit(username, fileName, editorTab.textArea.getText()).serialize();
+                System.out.println("CLIENT -> SERVER: " + editMessage);
+                client.send(editMessage);
                 editorTab.contentChanged = false;
             }
         });
@@ -331,7 +365,9 @@ public class EditorGUI {
             return;
         }
         String editorsStr = String.join(",", selectedUsers);
-        client.send(new Protocol("MSG_SET_EDITORS", username, currentFile, editorsStr).serialize());
+        String setEditorsMessage = Protocol.setEditors(username, currentFile, editorsStr).serialize();
+        System.out.println("CLIENT -> SERVER: " + setEditorsMessage);
+        client.send(setEditorsMessage);
     }
 
     private void setupDelayedSave() {
@@ -340,13 +376,13 @@ public class EditorGUI {
     }
 
     private void handleEditMessage(Protocol msg) {
-        EditorTab editorTab = openFiles.get(msg.fileName);
+        EditorTab editorTab = openFiles.get(msg.getFileName());
         if (editorTab != null) {
             SwingUtilities.invokeLater(() -> {
                 // Eğer değişiklik bizden gelmediyse
-                if (!msg.username.equals(username)) {
+                if (!msg.getUsername().equals(username)) {
                     editorTab.contentChanged = false;
-                    editorTab.textArea.setText(msg.content);
+                    editorTab.textArea.setText(msg.getContent());
                     editorTab.contentChanged = false;
                 }
                 editorTab.textArea.setEditable(true);
@@ -357,28 +393,34 @@ public class EditorGUI {
 
     private void updateFileList(String fileListStr) {
         SwingUtilities.invokeLater(() -> {
+            // Önce comboBox'ı temizle
             fileComboBox.removeAllItems();
+            
+            // Dosyaları geçici listede topla
             String[] files = fileListStr.split(",");
+            Set<String> uniqueFiles = new HashSet<>();
+            
             for (String file : files) {
-                if (!file.trim().isEmpty())
-                    fileComboBox.addItem(file.trim());
+                String trimmedFile = file.trim();
+                if (!trimmedFile.isEmpty()) {
+                    uniqueFiles.add(trimmedFile);
+                }
+            }
+            
+            // Her benzersiz dosya için yetki kontrolü yap
+            for (String file : uniqueFiles) {
+                String permissionMessage = Protocol.checkPermission(username, file).serialize();
+                System.out.println("CLIENT -> SERVER: " + permissionMessage);
+                client.send(permissionMessage);
             }
         });
     }
 
-    private void handleDenyMessage(Protocol msg) {
-        String deniedFile = msg.fileName;
+    private void handleErrorMessage(Protocol msg) {
+        System.out.println("DEBUG: handleErrorMessage called with content: " + msg.getContent());
         SwingUtilities.invokeLater(() -> {
-            JOptionPane.showMessageDialog(frame,
-                    "Bu dosyayı düzenlemeye yetkiniz yok: " + deniedFile,
-                    "Yetki Hatası", JOptionPane.WARNING_MESSAGE);
-            // Dosya açık ise sekmesini kapat
-            int idx = tabbedPane.indexOfTab(deniedFile);
-            if (idx >= 0) {
-                tabbedPane.removeTabAt(idx);
-                openFiles.remove(deniedFile);
-            }
-        });
+        JOptionPane.showMessageDialog(frame, msg.getContent(), "Hata", JOptionPane.ERROR_MESSAGE);
+         });
     }
 
     private void showInfo(String info) {
@@ -391,27 +433,61 @@ public class EditorGUI {
         if (editorTab != null) {
             SwingUtilities.invokeLater(() -> {
                 editorTab.editorsListModel.clear();
+                System.out.println("DEBUG: Parsing editors string: " + editorsStr);
 
-                if (editorsStr.contains(";editors:")) {
-                    String[] parts = editorsStr.split(";editors:", 2);
+                // Yeni format: "owner (dosya sahibi);editor1,editor2,editor3"
+                if (editorsStr.contains(";")) {
+                    String[] parts = editorsStr.split(";", 2);
                     String owner = parts[0].trim();
                     editorTab.editorsListModel.addElement(owner);
 
-                    String editorsCSV = parts[1];
-                    if (!editorsCSV.trim().isEmpty()) {
-                        String[] editors = editorsCSV.split(",");
+                    if (parts.length > 1 && !parts[1].trim().isEmpty()) {
+                        String[] editors = parts[1].split(",");
                         for (String editor : editors) {
-                            editorTab.editorsListModel.addElement(editor.trim());
+                            String trimmedEditor = editor.trim();
+                            if (!trimmedEditor.isEmpty()) {
+                                editorTab.editorsListModel.addElement(trimmedEditor);
+                            }
                         }
                     }
                 } else {
-                    System.out.println("UYARI: ;editors: bulunamadı! editorsStr: " + editorsStr);
-                    editorTab.editorsListModel.addElement(editorsStr.trim()); // fallback
+                    // Fallback: direkt string'i ekle
+                    System.out.println("UYARI: ; bulunamadı! editorsStr: " + editorsStr);
+                    editorTab.editorsListModel.addElement(editorsStr.trim());
                 }
 
                 updateEditorsButtonState();
             });
         }
+    }
+
+    private void updateEditorsButtonState() {
+        EditorTab currentTab = getCurrentEditorTab();
+        if (currentTab == null) {
+            updateEditorsButton.setEnabled(false);
+            return;
+        }
+        
+        int idx = tabbedPane.getSelectedIndex();
+        if (idx < 0) {
+            updateEditorsButton.setEnabled(false);
+            return;
+        }
+        
+        String currentFile = tabbedPane.getTitleAt(idx);
+        
+        // Dosya sahibi kontrolü - editör listesinde "(dosya sahibi)" içeren kullanıcıyı ara
+        boolean isOwner = false;
+        for (int i = 0; i < currentTab.editorsListModel.size(); i++) {
+            String editor = currentTab.editorsListModel.getElementAt(i);
+            if (editor.contains("(dosya sahibi)") && editor.startsWith(username)) {
+                isOwner = true;
+                break;
+            }
+        }
+        
+        System.out.println("DEBUG: User: " + username + ", File: " + currentFile + ", IsOwner: " + isOwner);
+        updateEditorsButton.setEnabled(isOwner);
     }
 
     private void updateActiveUsers(String usersStr) {
@@ -427,19 +503,47 @@ public class EditorGUI {
         });
     }
 
-    private void updateEditorsButtonState() {
-        EditorTab currentTab = getCurrentEditorTab();
-        if (currentTab == null) {
-            updateEditorsButton.setEnabled(false);
-            return;
-        }
-        int idx = tabbedPane.getSelectedIndex();
-        if (idx < 0) {
-            updateEditorsButton.setEnabled(false);
-            return;
-        }
-        String currentFile = tabbedPane.getTitleAt(idx);
-        boolean isOwner = currentTab.editorsListModel.contains(username + " (dosya sahibi)");
-        updateEditorsButton.setEnabled(isOwner);
+    private void handlePermissionGranted(Protocol msg) {
+        SwingUtilities.invokeLater(() -> {
+            // Dosyayı comboBox'a ekle (eğer yoksa)
+            boolean alreadyExists = false;
+            for (int i = 0; i < fileComboBox.getItemCount(); i++) {
+                if (fileComboBox.getItemAt(i).equals(msg.getFileName())) {
+                    alreadyExists = true;
+                    break;
+                }
+            }
+            
+            if (!alreadyExists) {
+                fileComboBox.addItem(msg.getFileName());
+            }
+            
+            // Eğer bu dosya şu anda seçiliyse aç
+            if (fileComboBox.getSelectedItem() != null && 
+                fileComboBox.getSelectedItem().equals(msg.getFileName())) {
+                // Dosya içeriğini al ve dosyayı aç
+                String content = msg.getContent();
+                System.out.println("DEBUG: Opening file with content: " + content);
+                openFileInTab(msg.getFileName(), content);
+            }
+        });
+    }
+
+    private void handlePermissionDenied(Protocol msg) {
+        SwingUtilities.invokeLater(() -> {
+            // Dosyayı comboBox'tan çıkar (sessizce, popup göstermeden)
+            for (int i = 0; i < fileComboBox.getItemCount(); i++) {
+                if (fileComboBox.getItemAt(i).equals(msg.getFileName())) {
+                    fileComboBox.removeItemAt(i);
+                    break;
+                }
+            }
+            
+            // Eğer bu dosya şu anda seçiliyse comboBox'ı temizle (popup göstermeden)
+            if (fileComboBox.getSelectedItem() != null && 
+                fileComboBox.getSelectedItem().equals(msg.getFileName())) {
+                fileComboBox.setSelectedIndex(-1);
+            }
+        });
     }
 }
