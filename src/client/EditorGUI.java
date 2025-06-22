@@ -54,12 +54,10 @@ public class EditorGUI {
             client = new WebSocketEditorClient(serverUri, this::handleServerMessage);
             client.connect();
 
-            // Bağlantı kurulana kadar bekle
             while (!client.isOpen()) {
                 Thread.sleep(100);
             }
 
-            // Yeni protokol yapısı ile login mesajı gönder
             String loginMessage = Protocol.login(username).serialize();
             System.out.println("CLIENT -> SERVER: " + loginMessage);
             client.send(loginMessage);
@@ -129,16 +127,12 @@ public class EditorGUI {
             }
         });
 
-        // Üst Panel: Düzenleme işlemleri ve dosya seçimi
         JPanel topPanel = createTopPanel();
 
-        // Ana Sekme Paneli
         tabbedPane = new JTabbedPane();
 
-        // Sağ Panel: Aktif kullanıcılar ve editör güncelleme
         JPanel rightPanel = createRightPanel();
 
-        // Alt Panel: Kaydet butonu
         JButton saveButton = new JButton("Kaydet");
         saveButton.addActionListener(e -> sendEdit());
         JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -271,7 +265,7 @@ public class EditorGUI {
         editorTab.textArea.setText(content);
         editorTab.textArea.setEnabled(true);
         editorTab.contentChanged = false;
-        editorTab.textArea.setEditable(true); // Düzenlenebilir yap
+        editorTab.textArea.setEditable(true); 
 
         editorTab.textArea.getDocument().addDocumentListener(new DocumentListener() {
             private void scheduleSave() {
@@ -379,7 +373,6 @@ public class EditorGUI {
         EditorTab editorTab = openFiles.get(msg.getFileName());
         if (editorTab != null) {
             SwingUtilities.invokeLater(() -> {
-                // Eğer değişiklik bizden gelmediyse
                 if (!msg.getUsername().equals(username)) {
                     editorTab.contentChanged = false;
                     editorTab.textArea.setText(msg.getContent());
@@ -393,10 +386,8 @@ public class EditorGUI {
 
     private void updateFileList(String fileListStr) {
         SwingUtilities.invokeLater(() -> {
-            // Önce comboBox'ı temizle
             fileComboBox.removeAllItems();
             
-            // Dosyaları geçici listede topla
             String[] files = fileListStr.split(",");
             Set<String> uniqueFiles = new HashSet<>();
             
@@ -435,7 +426,6 @@ public class EditorGUI {
                 editorTab.editorsListModel.clear();
                 System.out.println("DEBUG: Parsing editors string: " + editorsStr);
 
-                // Yeni format: "owner (dosya sahibi);editor1,editor2,editor3"
                 if (editorsStr.contains(";")) {
                     String[] parts = editorsStr.split(";", 2);
                     String owner = parts[0].trim();
@@ -451,7 +441,6 @@ public class EditorGUI {
                         }
                     }
                 } else {
-                    // Fallback: direkt string'i ekle
                     System.out.println("UYARI: ; bulunamadı! editorsStr: " + editorsStr);
                     editorTab.editorsListModel.addElement(editorsStr.trim());
                 }
@@ -476,7 +465,6 @@ public class EditorGUI {
         
         String currentFile = tabbedPane.getTitleAt(idx);
         
-        // Dosya sahibi kontrolü - editör listesinde "(dosya sahibi)" içeren kullanıcıyı ara
         boolean isOwner = false;
         for (int i = 0; i < currentTab.editorsListModel.size(); i++) {
             String editor = currentTab.editorsListModel.getElementAt(i);
@@ -505,7 +493,6 @@ public class EditorGUI {
 
     private void handlePermissionGranted(Protocol msg) {
         SwingUtilities.invokeLater(() -> {
-            // Dosyayı comboBox'a ekle (eğer yoksa)
             boolean alreadyExists = false;
             for (int i = 0; i < fileComboBox.getItemCount(); i++) {
                 if (fileComboBox.getItemAt(i).equals(msg.getFileName())) {
@@ -518,10 +505,8 @@ public class EditorGUI {
                 fileComboBox.addItem(msg.getFileName());
             }
             
-            // Eğer bu dosya şu anda seçiliyse aç
             if (fileComboBox.getSelectedItem() != null && 
                 fileComboBox.getSelectedItem().equals(msg.getFileName())) {
-                // Dosya içeriğini al ve dosyayı aç
                 String content = msg.getContent();
                 System.out.println("DEBUG: Opening file with content: " + content);
                 openFileInTab(msg.getFileName(), content);
@@ -531,7 +516,6 @@ public class EditorGUI {
 
     private void handlePermissionDenied(Protocol msg) {
         SwingUtilities.invokeLater(() -> {
-            // Dosyayı comboBox'tan çıkar (sessizce, popup göstermeden)
             for (int i = 0; i < fileComboBox.getItemCount(); i++) {
                 if (fileComboBox.getItemAt(i).equals(msg.getFileName())) {
                     fileComboBox.removeItemAt(i);
@@ -539,7 +523,6 @@ public class EditorGUI {
                 }
             }
             
-            // Eğer bu dosya şu anda seçiliyse comboBox'ı temizle (popup göstermeden)
             if (fileComboBox.getSelectedItem() != null && 
                 fileComboBox.getSelectedItem().equals(msg.getFileName())) {
                 fileComboBox.setSelectedIndex(-1);

@@ -7,12 +7,11 @@ import java.util.Objects;
 public class Protocol {
     // FTP benzeri protokol yapısı
     private final String command;        // Mesaj komutu (LOGIN, EDIT, vb.)
-    private final String[] args;         // Komut parametreleri
+    private final String[] args;         // Komut parametreleri (editör adı, dosya adı gibi)
     private final String content;        // Mesaj içeriği
     private final String statusCode;     // Durum kodu
     private final long timestamp;        // Zaman damgası
     
-    // Özel karakterler
     private static final String HEADER_SEPARATOR = ";";
     private static final String ARG_SEPARATOR = ",";
     private static final String CONTENT_MARKER = "CONTENT:";
@@ -54,7 +53,6 @@ public class Protocol {
     public String getFileName() { return args.length > 1 ? args[1] : ""; }
     public String getArg(int index) { return index < args.length ? args[index] : ""; }
     
-    // FTP benzeri serileştirme: HEADER|CONTENT:content
     public String serialize() {
         StringBuilder header = new StringBuilder();
         header.append(command);
@@ -82,7 +80,6 @@ public class Protocol {
         return header.toString();
     }
     
-    // FTP benzeri deserileştirme
     public static Protocol deserialize(String message) {
         if (message == null || message.trim().isEmpty()) {
             return new Protocol("UNKNOWN", new String[]{}, "");
@@ -116,11 +113,9 @@ public class Protocol {
                 try {
                     timestamp = Long.parseLong(parts[3]);
                 } catch (NumberFormatException e) {
-                    // Varsayılan değer kullan - timestamp zaten System.currentTimeMillis() olarak ayarlandı
                 }
             }
             
-            // İçeriği parse et
             for (int i = 1; i < parts.length; i++) {
                 if (parts[i].startsWith(CONTENT_MARKER)) {
                     String encodedContent = parts[i].substring(CONTENT_MARKER.length());
@@ -129,7 +124,6 @@ public class Protocol {
                             byte[] decodedBytes = Base64.getDecoder().decode(encodedContent);
                             content = new String(decodedBytes, StandardCharsets.UTF_8);
                         } catch (IllegalArgumentException e) {
-                            // Base64 decode hatası durumunda boş content kullan
                             content = "";
                         }
                     }
@@ -144,7 +138,6 @@ public class Protocol {
         }
     }
     
-    // Statik factory metodları - kolaylık için
     public static Protocol login(String username) {
         return new Protocol("LOGIN", new String[]{username}, "");
     }
@@ -209,7 +202,6 @@ public class Protocol {
         return new Protocol("ERROR", new String[]{errorType}, errorMessage, statusCode);
     }
     
-    // Özel hata türleri için factory metodları
     public static Protocol fileNotFound(String fileName) {
         return new Protocol("ERROR", new String[]{"FILE_NOT_FOUND"}, "Dosya bulunamadı: " + fileName, "404 Not Found");
     }
@@ -297,12 +289,10 @@ public class Protocol {
                java.util.Arrays.equals(args, protocol.args) &&
                Objects.equals(content, protocol.content) &&
                Objects.equals(statusCode, protocol.statusCode);
-        // Timestamp karşılaştırması kaldırıldı çünkü aynı mesajın farklı zamanlarda gönderilmesi normal
     }
     
     @Override
     public int hashCode() {
         return Objects.hash(command, java.util.Arrays.hashCode(args), content, statusCode);
-        // Timestamp hash'e dahil edilmedi
     }
 }

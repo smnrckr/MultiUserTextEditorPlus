@@ -91,7 +91,6 @@ public class WebSocketEditorServer extends WebSocketServer {
             
             // Dosya sahibini editörlere EKLEME - sadece sahip olarak tut
             Set<String> editors = new HashSet<>();
-            // editors.add(username); // Bu satırı kaldırıyoruz
             fileEditors.put(fileName, editors);
 
             Protocol response = Protocol.success("Dosya oluşturuldu: " + fileName);
@@ -137,7 +136,6 @@ public class WebSocketEditorServer extends WebSocketServer {
                 WebSocket client = entry.getKey();
                 String clientUsername = entry.getValue();
                 
-                // Kendisine gönderme
                 if (clientUsername.equals(username)) continue;
                 
                 // Dosya sahibi veya düzenleyiciyse gönder
@@ -171,7 +169,6 @@ public class WebSocketEditorServer extends WebSocketServer {
             return;
         }
 
-        // Mevcut editörleri al veya yeni set oluştur
         Set<String> editors = fileEditors.getOrDefault(fileName, new HashSet<>());
         
         // Yeni editörleri ekle
@@ -226,14 +223,12 @@ public class WebSocketEditorServer extends WebSocketServer {
         boolean isEditor = editorsSet != null && editorsSet.contains(username);
 
         if (isOwner || isEditor) {
-            // Dosya içeriğini de gönder
             String content = fileContents.getOrDefault(fileName, "");
             Protocol response = Protocol.permissionGranted(username, fileName, content);
             String responseMessage = response.serialize();
             System.out.println("SERVER -> CLIENT: " + responseMessage);
             conn.send(responseMessage);
             
-            // Editör listesini de gönder
             String combinedMsg = owner + " (dosya sahibi);" + String.join(",", editorsSet != null ? editorsSet : Collections.emptySet());
             Protocol editorsResponse = Protocol.editorsList(fileName, combinedMsg);
             String editorsMessage = editorsResponse.serialize();
