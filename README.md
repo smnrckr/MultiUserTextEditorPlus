@@ -1,104 +1,104 @@
-# Çok Kullanıcılı Editör - Constructor Tabanlı Protokol
+# Multi-User Editor with WebSocket
 
-Bu proje, sunucu-istemci haberleşmesi için FTP benzeri bir mesaj yapısı kullanan çok kullanıcılı bir metin editörüdür. Basit constructor yaklaşımı ile tutarlı ve anlaşılır kod yapısı hedeflenmiştir.
+This project is a multi-user text editor that uses an FTP-like message structure for client-server communication. The code aims for consistency and clarity with a simple constructor-based approach.
 
-## 🚀 Özellikler
+## 🚀 Features
 
-- **FTP Benzeri Protokol**: Başlık ve içerik ayrımı ile net mesaj yapısı.
-- **Gerçek Zamanlı Düzenleme**: Birden fazla kullanıcı aynı anda aynı dosya üzerinde çalışabilir.
-- **Dosya Yönetimi**: Sunucu üzerinde dosya oluşturma, listeleme ve kaydetme.
-- **Yetki Sistemi**: Dosya sahibi ve editör bazlı erişim kontrolü.
-- **WebSocket Bağlantısı**: Hızlı ve çift yönlü iletişim.
-- **Constructor Tabanlı Protokol**: Anlaşılır ve tutarlı mesaj oluşturma ve ayrıştırma.
-- **Modern UI**: Sekme tabanlı arayüz ile çoklu dosya desteği.
+- **FTP-Like Protocol**: Clear message structure with header and content separation.
+- **Real-Time Editing**: Multiple users can work on the same file simultaneously.
+- **File Management**: Create, list, and save files on the server.
+- **Permission System**: Access control based on file owner and editors.
+- **WebSocket Connection**: Fast, bidirectional communication.
+- **Constructor-Based Protocol**: Intuitive and consistent message creation and parsing.
+- **Modern UI**: Tab-based interface with multi-file support.
 
-## 📋 Protokol Yapısı
+## 📋 Protocol Structure
 
-### Mesaj Formatı
-Protokol, `UTF-8` formatında tek bir satırdan oluşur. Başlık ve içerik `CONTENT:` anahtar kelimesi ile ayrılır.
+### Message Format
+The protocol consists of a single line in `UTF-8` format. The header and content are separated by the `CONTENT:` keyword.
 
 ```
-HEADER[;CONTENT:BASE64_ICERIK]
+HEADER[;CONTENT:BASE64_CONTENT]
 ```
 
-### Başlık Formatı
-Başlık; komut, argümanlar, durum kodu ve zaman damgasından oluşur. Bu alanlar `;` karakteri ile ayrılır. Argümanlar ise kendi içinde `,` ile ayrılır.
+### Header Format
+The header includes the command, arguments, status code, and timestamp. These fields are separated by `;`, and arguments are separated by `,`.
 
 ```
 COMMAND;ARG1,ARG2,...;STATUS_CODE;TIMESTAMP
 ```
 
-### Örnek Mesajlar
+### Example Messages
 
-#### Login Mesajı (İçeriksiz)
+#### Login Message (No Content)
 `LOGIN;user123;200 OK;1673778600000`
 
-#### Edit Mesajı (İçerikli)
+#### Edit Message (With Content)
 `EDIT;user123,file.txt;200 OK;1673778600000;CONTENT:SGVsbG8gV29ybGQ=`
 
-#### Dosya Listesi Yanıtı (İçerikli)
+#### File List Response (With Content)
 `LIST_FILES_RESPONSE;;200 OK;1673778600000;CONTENT:file1.txt,file2.txt`
 
-## 🛠️ Kurulum ve Çalıştırma
+## 🛠️ Setup and Running
 
-### 1. Derleme
+### 1. Compile
 ```bash
 javac -cp "lib/*" src/server/*.java src/client/*.java src/common/*.java
 ```
 
-### 2. Çalıştırma
+### 2. Run
 
-#### Doğrudan Çalıştırma (Önerilen)
+#### Direct Run (Recommended)
 ```bash
-# Sunucu
+# Server
 java -cp "lib/*;out" server.ServerMain
 
-# İstemci (yeni terminal penceresinde)
+# Client (in a new terminal window)
 java -cp "lib/*;out" client.ClientMain
 ```
 
-#### Manuel Derleme
+#### Manual Compilation
 ```bash
 javac -cp "lib/*" -d out src/common/Protocol.java src/client/WebSocketEditorClient.java src/client/EditorGUI.java src/common/ButtonTabComponent.java src/server/WebSocketEditorServer.java src/server/ServerMain.java src/Main.java
 ```
 
-## 📁 Proje Yapısı
+## 📁 Project Structure
 
 ```
 src/
 ├── common/
-│   ├── Protocol.java          # Constructor tabanlı protokol sınıfı
-│   └── ButtonTabComponent.java # Sekme kapatma bileşeni
+│   ├── Protocol.java              # Constructor-based protocol class
+│   └── ButtonTabComponent.java    # Tab close component
 ├── client/
-│   ├── ClientMain.java        # İstemci ana sınıfı
-│   ├── EditorGUI.java         # Kullanıcı arayüzü
-│   └── WebSocketEditorClient.java # WebSocket istemcisi
+│   ├── ClientMain.java            # Client main class
+│   ├── EditorGUI.java             # User interface
+│   └── WebSocketEditorClient.java # WebSocket client
 ├── server/
-│   ├── ServerMain.java        # Sunucu ana sınıfı
-│   └── WebSocketEditorServer.java # WebSocket sunucusu
-└── Main.java                  # Basit ana sınıf
+│   ├── ServerMain.java            # Server main class
+│   └── WebSocketEditorServer.java # WebSocket server
+└── Main.java                      # Simple main class
 ```
 
-## 🏗️ Mimari
+## 🏗️ Architecture
 
-Proje, istemci ve sunucu arasında WebSocket üzerinden haberleşen basit bir mimariye sahiptir. Sunucu, dosya işlemleri ve yetkilendirme mantığını yönetirken, istemci kullanıcı arayüzünü ve sunucuyla iletişimi sağlar.
+The project uses a simple architecture where the client and server communicate over WebSocket. The server manages file operations and authorization logic, while the client handles the user interface and communication with the server.
 
 ```mermaid
 graph TD;
     subgraph Client
-        A["Kullanıcı Arayüzü<br/>(EditorGUI)"] --> B["WebSocket İstemcisi<br/>(WebSocketEditorClient)"];
+        A["User Interface<br/>(EditorGUI)"] --> B["WebSocket Client<br/>(WebSocketEditorClient)"];
     end
 
     subgraph Server
-        D["WebSocket Sunucusu<br/>(WebSocketEditorServer)"] --> E["Dosya Yönetimi"];
-        D --> F["Yetki Kontrolü"];
-        D --> G["Kullanıcı Yönetimi"];
+        D["WebSocket Server<br/>(WebSocketEditorServer)"] --> E["File Management"];
+        D --> F["Permission Control"];
+        D --> G["User Management"];
     end
 
-    B -- "Protokol Mesajları" --> C(("WebSocket<br/>Bağlantısı<br/>Port: 12345"));
-    C -- "Protokol Mesajları" --> D;
+    B -- "Protocol Messages" --> C(("WebSocket<br/>Connection<br/>Port: 12345"));
+    C -- "Protocol Messages" --> D;
 
-    E -- "Dosya okuma/yazma" --> H[("sunucu_dosyalar/")];
+    E -- "File read/write" --> H[("sunucu_dosyalar/")];
 
     style A fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#ffffff
     style B fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#ffffff
@@ -110,49 +110,49 @@ graph TD;
     style C fill:#9b59b6,stroke:#8e44ad,stroke-width:2px,color:#ffffff
 ```
 
-## 🔧 Protokol Komutları
+## 🔧 Protocol Commands
 
-### İstemci → Sunucu
-- `LOGIN` - Kullanıcı girişi yapar.
-- `CREATE_FILE` - Yeni dosya oluşturur.
-- `EDIT` - Dosya içeriğini düzenler ve sunucuya gönderir.
-- `LIST_FILES_REQUEST` - Sunucudaki dosya listesini ister.
-- `CHECK_PERMISSION` - Dosya için yetki kontrolü yapar.
-- `GET_EDITORS` - Dosyanın editör listesini ister.
-- `SET_EDITORS` - Dosyanın editör listesini günceller (sadece dosya sahibi).
-- `LEAVE_FILE` - Aktif dosyadan ayrılır.
+### Client → Server
+- `LOGIN` - Logs in the user.
+- `CREATE_FILE` - Creates a new file.
+- `EDIT` - Edits file content and sends it to the server.
+- `LIST_FILES_REQUEST` - Requests the list of files from the server.
+- `CHECK_PERMISSION` - Checks permission for a file.
+- `GET_EDITORS` - Requests the list of editors for a file.
+- `SET_EDITORS` - Updates the list of editors (owner only).
+- `LEAVE_FILE` - Leaves the active file.
 
-### Sunucu → İstemci
-- `SUCCESS` - İşlemin başarılı olduğunu bildirir.
-- `ERROR` - Hata mesajı gönderir (örn: `FILE_NOT_FOUND`, `PERMISSION_DENIED`).
-- `EDIT` - Başka bir kullanıcı tarafından yapılan dosya içeriği değişikliğini iletir.
-- `LIST_FILES_RESPONSE` - Dosya listesini gönderir.
-- `EDITORS_LIST` - Dosyanın güncel editör listesini gönderir.
-- `ACTIVE_USERS` - Sunucuya bağlı aktif kullanıcı listesini günceller.
-- `PERMISSION_GRANTED` - Dosyaya erişim izni verildiğini ve içeriğini gönderir.
-- `PERMISSION_DENIED` - Dosyaya erişim izninin reddedildiğini bildirir.
+### Server → Client
+- `SUCCESS` - Indicates a successful operation.
+- `ERROR` - Sends an error message (e.g., `FILE_NOT_FOUND`, `PERMISSION_DENIED`).
+- `EDIT` - Notifies about file content changes by another user.
+- `LIST_FILES_RESPONSE` - Sends the list of files.
+- `EDITORS_LIST` - Sends the current list of editors for a file.
+- `ACTIVE_USERS` - Updates the list of active users connected to the server.
+- `PERMISSION_GRANTED` - Grants access to a file and sends its content.
+- `PERMISSION_DENIED` - Denies access to a file.
 
-## 💡 Constructor Yaklaşımı Kullanımı
+## 💡 Using the Constructor Approach
 
-Protokol sınıfı, `static factory` metotları kullanarak mesajların kolay ve hatasız bir şekilde oluşturulmasını sağlar.
+The Protocol class provides static factory methods for easy and error-free message creation.
 
-### Mesaj Oluşturma (Factory Metotları)
+### Creating Messages (Factory Methods)
 ```java
-// Login mesajı
+// Login message
 Protocol login = Protocol.login("user123");
 
-// Edit mesajı
-Protocol edit = Protocol.edit("user123", "file.txt", "yeni içerik");
+// Edit message
+Protocol edit = Protocol.edit("user123", "file.txt", "new content");
 
-// Başarı mesajı
-Protocol success = Protocol.success("Dosya başarıyla oluşturuldu!");
+// Success message
+Protocol success = Protocol.success("File created successfully!");
 
-// Hata mesajı
+// Error message
 Protocol error = Protocol.fileNotFound("file.txt");
 ```
 
-### Mesaj Ayrıştırma
-Gelen bir metin mesajı `deserialize` metodu ile bir `Protocol` nesnesine dönüştürülür.
+### Parsing Messages
+An incoming text message can be converted to a `Protocol` object using the `deserialize` method.
 ```java
 Protocol msg = Protocol.deserialize(rawMessage);
 String command = msg.getCommand();
@@ -160,38 +160,38 @@ String[] args = msg.getArgs();
 String content = msg.getContent();
 ```
 
-### Kolaylık Metodları
-Mesaj içeriğine daha kolay erişim için yardımcı metotlar mevcuttur.
+### Convenience Methods
+Helper methods are available for easier access to message content.
 ```java
-// Kullanıcı adı alma
+// Get username
 String username = msg.getUsername();
 
-// Dosya adı alma
+// Get file name
 String filename = msg.getFileName();
 
-// Argüman alma
+// Get argument
 String firstArg = msg.getArg(0);
 ```
 
-## 🎯 Kullanım
+## 🎯 Usage
 
-1. **Sunucuyu Başlat**: `java -cp "lib/*;out" server.ServerMain`
-2. **İstemciyi Başlat**: `java -cp "lib/*;out" client.ClientMain`
-3. **Kullanıcı Adı Gir**: İstemci başladığında kullanıcı adınızı girin
-4. **Dosya Seç/oluştur**: Mevcut dosyaları seçin veya yeni dosya oluşturun
-5. **Düzenleme Yap**: Metin alanında değişiklik yapın
-6. **Kaydet**: Değişiklikler otomatik olarak kaydedilir
+1. **Start the Server**: `java -cp "lib/*;out" server.ServerMain`
+2. **Start the Client**: `java -cp "lib/*;out" client.ClientMain`
+3. **Enter Username**: Enter your username when the client starts
+4. **Select/Create File**: Select an existing file or create a new one
+5. **Edit**: Make changes in the text area
+6. **Save**: Changes are saved automatically
 
-## 🔒 Güvenlik
+## 🔒 Security
 
-- Dosya sahibi sadece dosya sahibi düzenleyicileri değiştirebilir
-- Yetki kontrolü her işlemde yapılır
-- Base64 encoding ile binary-safe içerik aktarımı
-- Null kontrolü ile güvenlik artırıldı
+- Only the file owner can change the list of editors
+- Permission checks are performed for every operation
+- Base64 encoding ensures binary-safe content transfer
+- Null checks improve security
 
-## 📝 Notlar
+## 📝 Notes
 
-- Sunucu dosyaları `sunucu_dosyalar/` klasöründe saklanır
-- WebSocket bağlantısı port 12345'te çalışır
-- İstemci başlatıldığında kullanıcı adı girmeniz gereklidir
-- Sunucu önce başlatılmalı, sonra istemci bağlanmalıdır 
+- Server files are stored in the `sunucu_dosyalar/` directory
+- WebSocket connection runs on port 12345
+- You must enter a username when starting the client
+- The server must be started before the client connects
